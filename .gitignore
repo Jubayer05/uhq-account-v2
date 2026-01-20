@@ -1,0 +1,20 @@
+/node_modules
+/dist
+/build
+/dist-ssr
+/coverage
+/public
+/static
+/test
+/test-results
+/test-results-e2e
+/test-results-integration
+/test-results-unit
+/vercel.json
+/package-lock.json
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.env
