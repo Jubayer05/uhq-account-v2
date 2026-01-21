@@ -7,25 +7,33 @@ const ActivityLog = require('../../models/Activitylogs')
 
 // Create User Controller
 const createUser = async (req, res) => {
-  await Promise.all([
-    body('name', 'Name must be at least 3 characters').isLength({ min: 3 }).run(req),
-    body('email', 'Enter a valid email').isEmail().run(req),
-    body('password', 'Password must be at least 5 characters').isLength({ min: 5 }).run(req),
-  ]);
+  try {
+    // Run validations
+    await Promise.all([
+      body('name', 'Name must be at least 3 characters').isLength({ min: 3 }).run(req),
+      body('email', 'Enter a valid email').isEmail().run(req),
+      body('password', 'Password must be at least 5 characters').isLength({ min: 5 }).run(req),
+    ]);
 
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
+    }
 
   const generateReferralCode = (name) => {
-  const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit
-  return `${name.slice(0, 3).toUpperCase()}${randomNum}`;   // e.g., MUH4567
-};
+    const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit
+    const namePrefix = name && name.length >= 3 
+      ? name.slice(0, 3).toUpperCase() 
+      : 'USR'; // Default prefix if name is too short
+    return `${namePrefix}${randomNum}`;   // e.g., MUH4567
+  };
 
-  const { name, email, password, referredBy } = req.body;
+    const { name, email, password, referredBy } = req.body;
 
-  try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -37,7 +45,19 @@ const createUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const referralCode = generateReferralCode(name);
+    // Generate unique referral code
+    let referralCode = generateReferralCode(name);
+    let isUnique = false;
+    let attempts = 0;
+    while (!isUnique && attempts < 10) {
+      const existingCode = await User.findOne({ referralCode });
+      if (!existingCode) {
+        isUnique = true;
+      } else {
+        referralCode = generateReferralCode(name);
+        attempts++;
+      }
+    }
 
     const newUser = new User({
       name,
@@ -45,24 +65,22 @@ const createUser = async (req, res) => {
       password: hashedPassword,
       image: 'https://via.placeholder.com/40',
       referralCode: referralCode,
-        referredBy: referredBy || null,
+      referredBy: referredBy || null,
     });
     await newUser.save();
 
-    await newUser.save();
+    // If the user was referred
+    if (referredBy) {
+      const referrer = await User.findOne({ referralCode: referredBy });
+      if (referrer) {
+        const earnedAmount = (referrer.commission / 100) * 100; // 10% of assumed $100 default
 
-// If the user was referred
-if (referredBy) {
-  const referrer = await User.findOne({ referralCode: referredBy });
-  if (referrer) {
-    const earnedAmount = (referrer.commission / 100) * 100; // 10% of assumed $100 default
+        referrer.referrals += 1;
+        referrer.totalEarned += earnedAmount;
 
-    referrer.referrals += 1;
-    referrer.totalEarned += earnedAmount;
-
-    await referrer.save();
-  }
-}
+        await referrer.save();
+      }
+    }
 
 
     const token = jwt.sign(
@@ -79,15 +97,21 @@ if (referredBy) {
 
     const cleanedIp = (ip === '::1' || ip === '::ffff:127.0.0.1') ? '127.0.0.1' : ip.replace('::ffff:', '');
 
-    await ActivityLog.create({
-      user: newUser._id,
-      type: 'Register',
-      actor: newUser.name,
-      action: 'Created account',
-      affectedItem: 'User Account',
-      ipAddress: cleanedIp,
-      dateTime: new Date(),
-    });
+    // Log Activity (Register) - with error handling
+    try {
+      await ActivityLog.create({
+        user: newUser._id,
+        type: 'Register',
+        actor: newUser.name,
+        action: 'Created account',
+        affectedItem: 'User Account',
+        ipAddress: cleanedIp || 'unknown',
+        dateTime: new Date(),
+      });
+    } catch (logError) {
+      console.error('Failed to create activity log:', logError);
+      // Don't fail user creation if logging fails
+    }
 
     res.status(201).json({
       success: true,
@@ -104,10 +128,11 @@ if (referredBy) {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('CreateUser Error:', error);
     res.status(500).json({
       success: false,
       message: "Internal Server Error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
