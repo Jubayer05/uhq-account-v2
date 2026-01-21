@@ -60,17 +60,60 @@ if (mongoose.connection.readyState === 0) {
     .catch((error) => console.error(error));
 }
 
-// ✅ CORS
-const allowedOrigins = ['http://localhost:5173', 'https://uhqsmm.temp2026.com', 'https://uhqsmm.com', 'http://uhqsmm.com',  'http://162.217.249.95:4173'];
+// ✅ CORS Configuration
+const allowedOrigins = [
+  'http://localhost:5173', 
+  'https://uhqsmm.temp2026.com', 
+  'https://uhqsmm.com', 
+  'http://uhqsmm.com',  
+  'http://162.217.249.95:4173',
+  'https://smmversionv2.vercel.app',
+  'https://uhq-account-v2.vercel.app' // Backend's own domain (for same-origin requests)
+];
+
+// Custom CORS middleware - handles preflight OPTIONS requests explicitly
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Check if origin is allowed
+  if (!origin || allowedOrigins.includes(origin)) {
+    // Set CORS headers
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+    
+    // Handle preflight OPTIONS requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).json({ message: 'OK' });
+    }
+  } else {
+    console.log('CORS blocked origin:', origin);
+  }
+  
+  next();
+});
+
+// Use cors package for additional compatibility and edge cases
 app.use(cors({
   origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
+  maxAge: 86400, // 24 hours
 }));
 
 // ✅ Stripe Webhook raw parser
