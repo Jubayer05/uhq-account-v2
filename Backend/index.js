@@ -138,6 +138,17 @@ app.use(session({
 }));
 
 // ✅ Routes
+// Add logging middleware to debug routing
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`, req.headers.origin);
+  next();
+});
+
+// Test route to verify routing works
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'API routing works', timestamp: new Date().toISOString() });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/userdetail', userdetailRoute);
@@ -186,6 +197,7 @@ app.get('/', (req, res) => {
 
 // ✅ 404 Handler
 app.use((req, res, next) => {
+  console.log('404 - Route not found:', req.method, req.path, req.originalUrl);
   const error = new Error('API Not Found');
   error.status = 404;
   next(error);

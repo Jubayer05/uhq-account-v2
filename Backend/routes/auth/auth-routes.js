@@ -4,7 +4,11 @@ const User = require('../../models/User');
 const  {adminMiddleware}   = require('../../middleware/admin')
 const router = express.Router();
 
-router.post('/createUser', createUser);
+// Add logging to verify route is being hit
+router.post('/createUser', (req, res, next) => {
+  console.log('createUser route hit', req.body);
+  next();
+}, createUser);
 router.post('/login', login);
 router.post('/logout', logout);
 router.get('/me', authMiddleware, getMe);
